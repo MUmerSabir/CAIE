@@ -1,0 +1,99 @@
+import numpy as np
+import pandas as pd
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+import tensorflow as tf
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, Conv1D, MaxPooling1D, UpSampling1D, Dense, Flatten, Reshape, LSTM
+
+# Step 1: Data Collection and Pre-Processing
+# Assume data is loaded into a DataFrame
+# df = pd.read_csv('path_to_dataset.csv')
+
+# For demonstration purposes, generate synthetic data
+np.random.seed(42)
+data = np.random.rand(1000, 100)  # 1000 samples, 100 features
+labels = np.random.randint(0, 2, 1000)  # Binary labels
+
+# Standardize the data
+scaler = StandardScaler()
+data_scaled = scaler.fit_transform(data)
+
+# Split the data
+X_train, X_test, y_train, y_test = train_test_split(data_scaled, labels, test_size=0.3, random_state=42)
+
+# Step 2: Feature Extraction using Tuna Swarm Optimization (TSO)
+# Placeholder for TSO function
+def tuna_swarm_optimization(X):
+    # Assume it returns the top k features based on some criteria
+    k = 20
+    return X[:, :k]
+
+X_train_tso = tuna_swarm_optimization(X_train)
+X_test_tso = tuna_swarm_optimization(X_test)
+
+# Step 3: MSCAE Implementation
+def build_ms_cae(input_shape):
+    input_layer = Input(shape=input_shape)
+    
+    # Encoder
+    x = Conv1D(32, 3, activation='relu', padding='same')(input_layer)
+    x = MaxPooling1D(2, padding='same')(x)
+    x = Conv1D(64, 3, activation='relu', padding='same')(x)
+    encoded = MaxPooling1D(2, padding='same')(x)
+    
+    # Decoder
+    x = Conv1D(64, 3, activation='relu', padding='same')(encoded)
+    x = UpSampling1D(2)(x)
+    x = Conv1D(32, 3, activation='relu', padding='same')(x)
+    decoded = UpSampling1D(2)(x)
+    
+    autoencoder = Model(input_layer, decoded)
+    autoencoder.compile(optimizer='adam', loss='mse')
+    return autoencoder
+
+input_shape = (X_train_tso.shape[1], 1)
+X_train_tso_reshaped = X_train_tso.reshape(-1, input_shape[0], input_shape[1])
+X_test_tso_reshaped = X_test_tso.reshape(-1, input_shape[0], input_shape[1])
+
+autoencoder = build_ms_cae(input_shape)
+autoencoder.fit(X_train_tso_reshaped, X_train_tso_reshaped, epochs=50, batch_size=32, validation_split=0.2, verbose=1)
+
+# Step 4: Anomaly Detection and Classification
+def extract_features(autoencoder, data):
+    encoder = Model(autoencoder.input, autoencoder.layers[4].output)
+    encoded_data = encoder.predict(data)
+    return encoded_data
+
+encoded_X_train = extract_features(autoencoder, X_train_tso_reshaped)
+encoded_X_test = extract_features(autoencoder, X_test_tso_reshaped)
+
+# Classification using LSTM
+def build_lstm_classifier(input_shape):
+    input_layer = Input(shape=input_shape)
+    x = LSTM(50, activation='relu')(input_layer)
+    output_layer = Dense(1, activation='sigmoid')(x)
+    model = Model(input_layer, output_layer)
+    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    return model
+
+encoded_input_shape = (encoded_X_train.shape[1], encoded_X_train.shape[2])
+lstm_classifier = build_lstm_classifier(encoded_input_shape)
+
+encoded_X_train_flat = encoded_X_train.reshape(encoded_X_train.shape[0], encoded_X_train.shape[1] * encoded_X_train.shape[2])
+encoded_X_test_flat = encoded_X_test.reshape(encoded_X_test.shape[0], encoded_X_test.shape[1] * encoded_X_test.shape[2])
+
+lstm_classifier.fit(encoded_X_train_flat, y_train, epochs=50, batch_size=32, validation_split=0.2, verbose=1)
+
+# Step 5: Evaluation Metrics Calculation
+y_pred = (lstm_classifier.predict(encoded_X_test_flat) > 0.5).astype("int32")
+accuracy = accuracy_score(y_test, y_pred)
+precision = precision_score(y_test, y_pred)
+recall = recall_score(y_test, y_pred)
+f1 = f1_score(y_test, y_pred)
+
+print(f'Accuracy: {accuracy:.4f}')
+print(f'Precision: {precision:.4f}')
+print(f'Recall: {recall:.4f}')
+print(f'F1 Score: {f1:.4f}')
